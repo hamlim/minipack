@@ -26,20 +26,15 @@
  * and others are skipped to make this example as simple as possible.
  */
 
-const fs = require('fs');
-const path = require('path');
-const babylon = require('babylon');
-const traverse = require('babel-traverse').default;
-const {transformFromAst} = require('babel-core');
+const fs = require('fs')
+const path = require('path')
+const babylon = require('babylon')
+const traverse = require('babel-traverse').default
+const { transformFromAst } = require('babel-core')
 
-let ID = 0;
+let ID = 0
 
-// We start by creating a function that will accept a path to a file, read
-// its contents, and extract its dependencies.
-function createAsset(filename) {
-  // Read the content of the file as a string.
-  const content = fs.readFileSync(filename, 'utf-8');
-
+const parseJS = (content, filename) => {
   // Now we try to figure out which files this file depends on. We can do that
   // by looking at its content for import strings. However, this is a pretty
   // clunky approach, so instead, we will use a JavaScript parser.
@@ -54,10 +49,10 @@ function createAsset(filename) {
   // understand what our code is trying to do.
   const ast = babylon.parse(content, {
     sourceType: 'module',
-  });
+  })
 
   // This array will hold the relative paths of modules this module depends on.
-  const dependencies = [];
+  const dependencies = []
 
   // We traverse the AST to try and understand which modules this module depends
   // on. To do that, we check every import declaration in the AST.
@@ -66,15 +61,15 @@ function createAsset(filename) {
     // that you can't import a variable, or conditionally import another module.
     // Every time we see an import statement we can just count its value as a
     // dependency.
-    ImportDeclaration: ({node}) => {
+    ImportDeclaration: ({ node }) => {
       // We push into the dependencies array the value that we import.
-      dependencies.push(node.source.value);
+      dependencies.push(node.source.value)
     },
-  });
+  })
 
   // We also assign a unique identifier to this module by incrementing a simple
   // counter.
-  const id = ID++;
+  const id = ID++
 
   // We use EcmaScript modules and other JavaScript features that may not be
   // supported on all browsers. To make sure our bundle runs in all browsers we
@@ -83,9 +78,9 @@ function createAsset(filename) {
   // The `presets` option is a set of rules that tell Babel how to transpile our
   // code. We use `babel-preset-env` to transpile our code to something that
   // most browser can run.
-  const {code} = transformFromAst(ast, null, {
+  const { code } = transformFromAst(ast, null, {
     presets: ['env'],
-  });
+  })
 
   // Return all information about this module.
   return {
@@ -93,7 +88,17 @@ function createAsset(filename) {
     filename,
     dependencies,
     code,
-  };
+  }
+}
+
+// We start by creating a function that will accept a path to a file, read
+// its contents, and extract its dependencies.
+const createAsset = filename => {
+  // Read the content of the file as a string.
+  const content = fs.readFileSync(filename, 'utf-8')
+
+  // Return all information about this module.
+  return parseJS(content, filename)
 }
 
 // Now that we can extract the dependencies of a single module, we are going to
@@ -103,13 +108,13 @@ function createAsset(filename) {
 // dependencies. We will keep that going until we figure out about every module
 // in the application and how they depend on one another. This understanding of
 // a project is called the dependency graph.
-function createGraph(entry) {
+const createGraph = entry => {
   // Start by parsing the entire file.
-  const mainAsset = createAsset(entry);
+  const mainAsset = createAsset(entry)
 
   // We're going to use a queue to parse the dependencies of every asset. To do
   // that we are defining an array with just the entry asset.
-  const queue = [mainAsset];
+  const queue = [mainAsset]
 
   // We use a `for ... of` loop to iterate over the queue. Initially the queue
   // only has one asset but as we iterate it we will push additional new assets
@@ -119,10 +124,10 @@ function createGraph(entry) {
     // depends on. We are going to iterate over them, parse them with our
     // `createAsset()` function, and track the dependencies this module has in
     // this object.
-    asset.mapping = {};
+    asset.mapping = {}
 
     // This is the directory this module is in.
-    const dirname = path.dirname(asset.filename);
+    const dirname = path.dirname(asset.filename)
 
     // We iterate over the list of relative paths to its dependencies.
     asset.dependencies.forEach(relativePath => {
@@ -131,25 +136,25 @@ function createGraph(entry) {
       // relative to the file that imported them. We can turn the relative path
       // into an absolute one by joining it with the path to the directory of
       // the parent asset.
-      const absolutePath = path.join(dirname, relativePath);
+      const absolutePath = path.join(dirname, relativePath)
 
       // Parse the asset, read its content, and extract its dependencies.
-      const child = createAsset(absolutePath);
+      const child = createAsset(absolutePath)
 
       // It's essential for us to know that that `asset` depends on `child`. We
       // express that relationship by adding a new property to the `mapping`
       // object with the id of the child.
-      asset.mapping[relativePath] = child.id;
+      asset.mapping[relativePath] = child.id
 
       // Finally, we push the child asset into the queue so its dependencies
       // will also be iterated over and parsed.
-      queue.push(child);
-    });
+      queue.push(child)
+    })
   }
 
   // At this point the queue is just an array with every module in the target
   // application: This is how we represent our graph.
-  return queue;
+  return queue
 }
 
 // Next, we define a function that will use our graph and return a bundle that
@@ -162,7 +167,8 @@ function createGraph(entry) {
 // That function will receive just one parameter: An object with information
 // about every one of the modules in our graph.
 function bundle(graph) {
-  let modules = '';
+  console.log(graph)
+  let modules = ''
 
   // Before we get to the body of that function, we'll construct the object that
   // we'll feed it. Please note that this string that we're building gets
@@ -191,10 +197,10 @@ function bundle(graph) {
     // be able to know which module in the graph corresponds to that relative
     // path for this module.
     modules += `${mod.id}: [
-      function (require, module, exports) { ${mod.code} },
-      ${JSON.stringify(mod.mapping)},
-    ],`;
-  });
+  function (require, module, exports) { ${mod.code} },
+  ${JSON.stringify(mod.mapping)},
+],`
+  })
 
   // Finally, we implement the body of the self-invoking function.
   //
@@ -218,30 +224,46 @@ function bundle(graph) {
   // mutating its `exports` object. The exports object, after it has been
   // changed by the module's code, is returned from the `require()` function.
   const result = `
-    (function(modules) {
-      function require(id) {
-        const [fn, mapping] = modules[id];
+(function(modules) {
+  function require(id) {
+    const [fn, mapping] = modules[id];
 
-        function localRequire(name) {
-          return require(mapping[name]);
-        }
+    function localRequire(name) {
+      return require(mapping[name]);
+    }
 
-        const module = { exports : {} };
+    const module = { exports : {} };
 
-        fn(localRequire, module, module.exports);
+    fn(localRequire, module, module.exports);
 
-        return module.exports;
-      }
+    return module.exports;
+  }
 
-      require(0);
-    })({${modules}})
-  `;
+  require(0);
+})({${modules}})
+  `
 
   // We simply return the result, hurray! :)
-  return result;
+  return result
 }
 
-const graph = createGraph('./example/entry.js');
-const result = bundle(graph);
+const main = () => {
+  const entrypoint = process.argv[2]
+  if (typeof entrypoint !== 'string') {
+    throw Error(
+      'The argument passed to this script should be a string path to the entrypoint.',
+    )
+  }
+  const graph = createGraph(entrypoint)
+  const result = bundle(graph)
 
-console.log(result);
+  const toFile = process.argv[3] || './bundle.js'
+  fs.writeFileSync(toFile, result, { encoding: 'utf-8' })
+}
+
+main()
+
+// const graph = createGraph('./example/entry.js');
+// const result = bundle(graph);
+
+// console.log(result);
